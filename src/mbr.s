@@ -1,4 +1,4 @@
-##### MBRへの書き込みに使用するオフセット #####
+##### mbrへの書き込みに使用するオフセット #####
 ##### OSNAMEは8byteで、先頭1byteが0でない場合OSが存在する。LEAD_SECは、LBA方式でそのパーティションが起動ディスクの先頭から何セクタ目に存在するかという情報へのオフセット #####
 .equ	PART1_OSNAME, 462
 .equ	PART1_LEAD_SEC, 470
@@ -15,7 +15,7 @@
 ##### .text領域にプログラムを配置する #####
 .text
 
-##### iplを「とりあえず」動かすためにセグメントレジスタを初期化している #####
+##### mbrを「とりあえず」動かすためにセグメントレジスタを初期化している #####
 	sti					# biosがstiし忘れていても大丈夫なように。
 	ljmpw	$0x07c0, $init_segment_regs	# biosからはljmpw $0x0000, $0x7c00でジャンプしているはずなので、機械語(.textや.data)のVMAを0にするためにcsを7c0に初期化する。
 init_segment_regs:
@@ -25,7 +25,7 @@ init_segment_regs:
 	movw	%ax, %ss			# ss=0
 	movw	$0x7a00, %sp			# sp=0x7a00(0x7c00でいいと思われるかもだが、0x7a00にmbrをコピーするため、0x7a00-0x7bffを破壊するわけには行かない)
 
-##### HDD系のデバイスから起動しているのかを確認し、ドライブ番号を保存しておく(mbrの最後にdlにドライブ番号を復活させるため) #####
+##### HDD系のデバイスから起動しているのかを確認し、ドライブ番号を保存しておく(mbrの最後にドライブ番号が必要なため) #####
 check_drv_num:
 	movb	%dl, (drv)			# dlには起動時にドライブ番号が入っている
 	cmpb	$0x80, %dl			# ドライブ番号が0の場合はAドライブ(つまりFD)、0x80以上の場合は固定ディスク(つまりUSBやSDカードなどのHDD系ドライブ)であるらしい。。。
@@ -96,13 +96,13 @@ print_part4_info:
 	call	print_str
 	orb	$8, (part_flag)
 
-##### もし、どのパーティションも存在しなかったらエラー処理を行う(load errorと表示するだけだけれど) #####
+##### もし、どのパーティションも存在しなかったら"load error"と表示する(makeの時点でエラーが出ているはずではあるのだが) #####
 part_check:
 	cmpb	$0, (part_flag)
 	je	error
 
 ##### キーボード入力(1~4)により、起動するOSを選択する #####
-##### ただし、存在する番号以外の番号を入力したときにはエラーになるし、1~4以外の文字は無視される #####
+##### ただし、存在する番号以外を入力したときにはエラーになるし、1~4以外の文字は無視される #####
 select_part:
 	movw	$select_msg, %si
 	call	print_str
@@ -113,10 +113,10 @@ wait_kbd:
 	jb	wait_kbd
 	cmpb	$0x34, %al
 	ja	wait_kbd
-	andb	$0x0f, %al			# 上記の処理により、ここではalの値は0x31~0x34だけである。ここでalの下位4bitをandで掠め取ると、アスキーコードから数に変換できる。(sub命令より小さいのでand)
+	andb	$0x0f, %al			# 上記の処理により、ここではalの値は0x31~0x34だけである。ここでalの下位4bitをandで掠め取ると、アスキーコードから数に変換できる。
 	movb	%al, %bl			# 押した番号をblに一旦保存しておく。
-	decb	%al				# shlb $al, $1として、part_flagの内容とのandを取ると、そのパーティションが存在するかを判定できるようにするために、-1しておく。
-	movb	%al, %cl			# shlb命令の左のオペランドにはclにしか指定できない。
+	decb	%al				# shlb $al, $1として、part_flagの内容とのandを取るとそのパーティションが存在するかを判定できるようにするために-1しておく。
+	movb	%al, %cl			# shlb命令の左のオペランドにはレジスタだとclしか指定できない。
 	movb	$0x01, %al
 	shlb	%cl, %al			# al = 1 << (パーティション番号 - 1) と同義。
 	andb	(part_flag), %al		# 押した番号に対応するパーティションが存在したらalは真、しない場合は偽を指す。
@@ -129,7 +129,7 @@ set_part_info:
 	movw	%ax, %bx			# bx = パーティション番号 * 4
 	shlw	$1, %ax				# ax = パーティション番号 * 8
 	addw	%ax, %bx			# bx = パーティション番号 * 12
-	addw	$458, %bx			# パーティションテーブルは、MBRのオフセット462, 474, 486, 498からそれぞれ配置される。「bx = 450 + 12 * パーティション番号 + 8」で、各PARTのサイズが得られる。
+	addw	$458, %bx			# パーティションテーブルは、mbrのオフセット462, 474, 486, 498からそれぞれ配置される。「bx = 450 + 12 * パーティション番号 + 8」で、各PARTのオフセットが得られる。
 	movl	(%bx), %ebx			# パーティションのサイズは4byteのデータなので、4byteのデータバスを利用する。
 	movl	%ebx, (lba0)			# lba0の部分を書き換える。
 
@@ -172,7 +172,7 @@ next:
 	movb	(drv), %dl			# 起動ディスクの番号をpbrのためにdlに入れ直しておく。(できるだけ、BIOSからの呼び出しに近づけたい。)
 	xorw	%ax, %ax
 	movw	%ax, %ds
-	ljmpw	$0x0000, $0x7c00		# biosから呼び出されたのと同じ状況でpbrを呼び出す。
+	ljmpw	$0x0000, $0x7c00		# biosから呼び出されたのとだいたい同じ状況でpbrを呼び出す。(esとかはBIOS直後と比べて値が変わっているけど、pbrでesを使用する場合はどうせ初期化するはずなのでOK)
 
 ##### 文字列を表示する #####
 print_str:
@@ -207,7 +207,7 @@ not_supported_msg:
 load_error_msg:
 	.string	"mbr.s: load error."
 pbr_info_msg:
-	.string "# PBR INFO #\r\n"
+	.string "# pbr INFO #\n"
 msg1:
 	.string "\r\n1>"
 msg2:
@@ -217,7 +217,7 @@ msg3:
 msg4:
 	.string "\r\n4>"
 select_msg:
-	.string "\r\n\r\nPut 1-4 from table above.\r\n"
+	.string "\r\n\nPut 1-4 from table above.\r\n"
 
 ##### ドライブ番号を記憶しておく #####
 drv:
