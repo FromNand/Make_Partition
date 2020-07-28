@@ -1,5 +1,5 @@
 // このプログラムを読むときには次のことを意識すればいい。
-// mbrはpbrとカーネルを含めたオフセット・サイズを知らなければならない。
+// mbrはOS名(これがパーティション存在のフラグにもなる)とpbrとカーネルを含めたオフセットを知らなければならない。
 // pbrはpbrの次のセクタから(つまり、カーネルをロードするコードだろう)のオフセット・サイズを知らなければならない。
 
 // MBRへの書き込みに使用するオフセット
@@ -86,7 +86,7 @@ int main(int argc, char **argv){
 	}
 
 	// Write the info to mbr.
-	// mbr-offset = the first sector of each OS-image, mbr-size = the size of each whole OS-image.
+	// mbr-name = OS-name, mbr-offset = the first sector of each OS-image
 	for(i = 0; i < argc - 1; i++){
 		memcpy(mbr_buffer + 462 + 12 * i, image_name[i], 8);
 		memcpy(mbr_buffer + 470 + 12 * i, &pbr_data[i][0], 4);
@@ -95,7 +95,7 @@ int main(int argc, char **argv){
 
 	// Fix the info and write to pbr.
 	for(i = 0; i < argc - 1; i++){
-		// pbr-offset = the next sector of each OS-image's pbr, mbr-size = the size of each whole OS-image. (except pbr)
+		// pbr-offset = the next sector of each OS-image's pbr
 		pbr_data[i][0]++;
 		memcpy(image_buffer[i] + 502, &pbr_data[i][0], 4);
 		memcpy(image_buffer[i] + 506, &pbr_data[i][1], 4);
